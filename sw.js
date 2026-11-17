@@ -5,9 +5,10 @@
 //   to the cached copy when offline; the app then shows how old it is.
 // When the background refresh finds a changed file, open pages get a message and show a
 // "Herladen" banner (same as Clawback).
-// Bump VERSION when the list of files below changes.
+// Bump VERSION when the list of files below changes. The deploy adds the commit id to it, so
+// every release is a new service worker, which always shows the "Herladen" banner.
 
-const VERSION = 'v6';
+const VERSION = 'v7';
 const SHELL = `lift-shell-${VERSION}`;
 const STATUS = 'lift-status';
 
@@ -31,7 +32,7 @@ const SHELL_FILES = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {

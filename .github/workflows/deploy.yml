@@ -51,6 +51,11 @@ jobs:
         run: |
           mkdir _site
           cp -r index.html style.css manifest.webmanifest icon.svg sw.js LICENSE js vendor data icons _site/
+          # Every deploy is a new service worker version (v7 -> v7-1a2b3c4), so open apps always
+          # get the "Herladen" banner. The background file check alone missed a config.js-only
+          # change on Firefox for Android (17 Nov 2026).
+          sed -i "s/^const VERSION = '\([^']*\)';/const VERSION = '\1-${GITHUB_SHA::7}';/" _site/sw.js
+          grep -q "^const VERSION = '.*-${GITHUB_SHA::7}';" _site/sw.js
 
       - uses: actions/configure-pages@v5
 

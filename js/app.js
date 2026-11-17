@@ -34,7 +34,8 @@ function fetchFirst(urls, { onlyAfter404 = false } = {}) {
   return fetch(urls[0], { cache: 'no-cache' }).then((r) => {
     if (r.status === 404 || (!r.ok && !onlyAfter404)) return next(new Error(r.status));
     if (!r.ok) throw new Error(r.status);
-    return r.json();
+    // Remember where it came from (shown under Instellingen → Gegevens).
+    return r.json().then((d) => Object.defineProperty(d, 'from', { value: r.url || urls[0] }));
   }, (err) => (onlyAfter404 ? Promise.reject(err) : next(err)));
 }
 
@@ -365,6 +366,13 @@ function FindTab() {
   ];
 }
 
+/** "uplift-data.timovdk.nl" for the bucket, "deze website" for the copy next to the app. */
+function sourceName(url) {
+  if (!url) return 'onbekend';
+  const u = new URL(url, location.href);
+  return u.origin === location.origin ? 'deze website (meegeleverde kopie)' : u.host;
+}
+
 function SettingsTab() {
   const st = S.status;
   const ext = (href, text) => m('a', { href, target: '_blank', rel: 'noopener' }, text);
@@ -395,6 +403,7 @@ function SettingsTab() {
       st && [
         m('p', [`Liftstatus bijgewerkt: ${when(st.generated)}`, st.source === 'example' && m('strong', ' (voorbeelddata)')]),
         m('p.hint', `Laatste bericht van ProRail: ${when(st.feed)}. Status bekend van ${counted} van de ${lifts} liften.`),
+        m('p.hint', `Opgehaald van: ${sourceName(st.from)}.`),
       ],
     ]),
     m('section.card.about', [
