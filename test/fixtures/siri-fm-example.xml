@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  MADE-UP EXAMPLE, not real data. Hand-written from the Dutch SIRI-FM profile
+  (BISON TMI9, "SIRI-FM 9.0", 29 Oct 2024) so the app can be built and tested before we
+  have access to the real feed. When the real feed arrives, save one message next to this
+  file and check that FacilityRef really contains the "XX-LIF-000" functional code.
+-->
+<Siri version="2.0" xmlns="http://www.siri.org.uk/siri">
+  <ServiceDelivery>
+    <ResponseTimestamp>2026-11-16T08:00:00+01:00</ResponseTimestamp>
+    <ProducerRef>DOVA</ProducerRef>
+    <FacilityMonitoringDelivery version="2.1">
+      <ResponseTimestamp>2026-11-16T08:00:00+01:00</ResponseTimestamp>
+      <FacilityCondition>
+        <FacilityRef>NL:PRORAIL:UT-LIF-007</FacilityRef>
+        <FacilityStatus>
+          <Status>notAvailable</Status>
+        </FacilityStatus>
+        <ValidityPeriod>
+          <StartTime>2026-11-16T07:42:00+01:00</StartTime>
+        </ValidityPeriod>
+      </FacilityCondition>
+      <FacilityCondition>
+        <FacilityRef>NL:PRORAIL:ASD-LIF-010</FacilityRef>
+        <FacilityStatus>
+          <Status>notAvailable</Status>
+        </FacilityStatus>
+        <ValidityPeriod>
+          <StartTime>2026-11-02T10:00:00+01:00</StartTime>
+          <EndTime>2026-11-27T17:00:00+01:00</EndTime>
+        </ValidityPeriod>
+      </FacilityCondition>
+      <FacilityCondition>
+        <FacilityRef>NL:PRORAIL:UT-LIF-008</FacilityRef>
+        <FacilityStatus>
+          <Status>available</Status>
+        </FacilityStatus>
+        <ValidityPeriod>
+          <StartTime>2026-11-15T22:10:00+01:00</StartTime>
+        </ValidityPeriod>
+      </FacilityCondition>
+      <FacilityCondition>
+        <FacilityRef>NL:PRORAIL:HT-LIF-003</FacilityRef>
+        <FacilityStatus>
+          <Status>unknown</Status>
+          <Description>No connection with object (temporally).</Description>
+        </FacilityStatus>
+        <ValidityPeriod>
+          <StartTime>2026-11-16T06:15:00+01:00</StartTime>
+        </ValidityPeriod>
+      </FacilityCondition>
+      <FacilityCondition>
+        <FacilityRef>NL:PRORAIL:DVNK-LIF-001</FacilityRef>
+        <FacilityStatus>
+          <Status>available</Status>
+        </FacilityStatus>
+        <ValidityPeriod>
+          <StartTime>2026-11-10T09:00:00+01:00</StartTime>
+        </ValidityPeriod>
+      </FacilityCondition>
+      <FacilityCondition>
+        <FacilityRef>NL:PRORAIL:DVNK-LIF-002</FacilityRef>
+        <FacilityStatus>
+          <Status>notAvailable</Status>
+        </FacilityStatus>
+        <ValidityPeriod>
+          <StartTime>2027-01-12T06:00:00+01:00</StartTime>
+          <EndTime>2027-01-14T18:00:00+01:00</EndTime>
+        </ValidityPeriod>
+      </FacilityCondition>
+      <FacilityCondition>
+        <FacilityRef>NL:PRORAIL:XYZ-LIF-999</FacilityRef>
+        <FacilityStatus>
+          <Status>available</Status>
+        </FacilityStatus>
+      </FacilityCondition>
+    </FacilityMonitoringDelivery>
+  </ServiceDelivery>
+</Siri>

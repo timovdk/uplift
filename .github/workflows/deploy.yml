@@ -1,0 +1,62 @@
+# Publishes Uplift to GitHub Pages on every push to main (after the tests).
+#
+# The data is NOT made here: the feed service on a home server (nas/) listens to the lift feed
+# around the clock, rebuilds the station list monthly, and uploads lifts.json and
+# stations.json to a Cloudflare R2 bucket; the app reads them from there (js/config.js).
+# The copies published with the app are fallbacks: data/stations.json from git, and the
+# made-up example status ("Voorbeelddata" banner) until the bucket has the live one.
+#
+# Setup (once): Settings → Pages → Source: "GitHub Actions".
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build the example status (fallback until the bucket has the live status)
+        run: python3 scripts/build_lifts.py --example
+
+      - name: Test
+        run: npm test
+
+      - name: Collect the files the app needs
+        run: |
+          mkdir _site
+          cp -r index.html style.css manifest.webmanifest icon.svg sw.js LICENSE js vendor data icons _site/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

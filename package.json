@@ -1,0 +1,15 @@
+{
+  "name": "uplift",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js && python3 -m unittest discover -s test -p 'test_*.py'",
+    "stations": "python3 scripts/build_stations.py",
+    "lifts:example": "python3 scripts/build_lifts.py --example",
+    "serve": "python3 -m http.server 8000",
+    "venv": "uv venv .venv && uv pip install --python .venv/bin/python -r requirements.txt",
+    "listen": ".venv/bin/python scripts/listen_lifts.py .cache/feed --minutes 11",
+    "listen:night": "caffeinate -is .venv/bin/python scripts/listen_lifts.py .cache/night-$(date +%Y-%m-%d) --minutes 1440"
+  },
+  "license": "EUPL-1.2"
+}

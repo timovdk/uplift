@@ -1,0 +1,7 @@
+.cache/
+_site/
+__pycache__/
+.DS_Store
+data/lifts.json
+.venv/
+nas/.env

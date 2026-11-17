@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Uplift</title>
+  <meta name="description" content="Uplift: werken de liften op je station? Liftstatus van Nederlandse treinstations uit open data van ProRail. Onafhankelijke app, niet van NS of ProRail.">
+  <meta name="theme-color" content="#a8dcd1">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Uplift">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <script>
+    // Apply the chosen theme before first paint (see Instellingen).
+    try {
+      var t = (JSON.parse(localStorage.getItem('lift.settings') || '{}').theme) || 'system';
+      if (t !== 'system') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app"></div>
+  <noscript>Deze app heeft JavaScript nodig.</noscript>
+  <script src="vendor/mithril.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

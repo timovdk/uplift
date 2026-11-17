@@ -1,0 +1,27 @@
+# Uplift feed service. In e.g. appdata/uplift/:
+#   git clone https://github.com/<you>/uplift src
+#   cp src/nas/docker-compose.yml src/nas/.env.example .   (rename .env.example to .env, fill it in)
+#   docker compose up -d --build
+# Update: git -C src pull && docker compose up -d --build
+services:
+  uplift-feed:
+    build:
+      context: ./src
+      dockerfile: nas/Dockerfile
+    image: uplift-feed
+    container_name: uplift-feed
+    restart: unless-stopped
+    user: "${PUID}:${PGID}"
+    environment:
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_BUCKET: ${R2_BUCKET:-uplift}
+      TZ: Europe/Amsterdam
+    volumes:
+      - ${UPLIFT_DATA}:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
