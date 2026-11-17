@@ -298,8 +298,6 @@ div.station-main { padding: 12px 8px 12px 16px; }
 
 .about p { font-size: 0.95rem; }
 
-.more { padding: 2px 16px 6px; border-top: 1px solid var(--border); }
-.lifts + .more { border-top: 1px solid var(--border); }
 
 /* --- mascot in the sticky header (same cats as Clawback) ------------------- */
 

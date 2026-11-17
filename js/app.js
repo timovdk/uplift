@@ -62,8 +62,7 @@ const S = {
   locError: '',
   nearby: null, // [{ station, metres }]
   query: '',
-  open: new Set(), // expanded stations on the find tab
-  showAll: new Set(), // starred stations showing every lift, not just the broken ones
+  open: new Set(), // expanded stations (both tabs)
   online: navigator.onLine,
 
   coat: randomCoat(),
@@ -216,33 +215,9 @@ function StationCard(station, { metres, expanded, toggle, reorder } = {}) {
         }, fav ? '★' : '☆'),
     ]),
     expanded === 'all' && m('ul.lifts', station.lifts.map(LiftRow)),
-    expanded === 'problems' && ProblemLifts(station),
   ]);
 }
 
-/** Starred stations: only the lifts that need attention, the rest behind a tap. */
-function ProblemLifts(station) {
-  const problems = station.lifts.filter((l) => {
-    const st = liftState(l, S.status);
-    return st.level === 'down' || st.level === 'partial' || st.planned;
-  });
-  const showAll = S.showAll.has(station.code);
-  const list = showAll ? station.lifts : problems;
-  const rest = station.lifts.length - problems.length;
-  return [
-    list.length > 0 && m('ul.lifts', list.map(LiftRow)),
-    (rest > 0 || showAll) && m('div.more', m('button.link', {
-      type: 'button', 'aria-expanded': String(showAll),
-      onclick: () => { if (!S.showAll.delete(station.code)) S.showAll.add(station.code); },
-    }, showAll
-      ? 'Toon alleen liften met storing'
-      : `Toon alle ${station.lifts.length} liften`)),
-  ];
-}
-
-// --- banners -----------------------------------------------------------------------
-
-/** Is the status we show too old to trust? */
 function statusAge() {
   const st = S.status;
   if (!st || !st.generated) return {};
@@ -314,6 +289,11 @@ function UpdatedLine() {
 
 // --- tabs --------------------------------------------------------------------------
 
+/** Tap a station to show or hide its lifts; same in both lists (and remembered between them). */
+function toggleOpen(code) {
+  return () => { if (!S.open.delete(code)) S.open.add(code); };
+}
+
 function MineTab() {
   const list = S.favs.map((c) => S.byCode.get(c)).filter(Boolean);
   if (!list.length) {
@@ -325,7 +305,8 @@ function MineTab() {
   }
   return [
     UpdatedLine(),
-    list.map((s) => StationCard(s, { expanded: 'problems', reorder: S.reorder })),
+    // Always in the user's own order (not sorted by outages), so each station keeps its place.
+    list.map((s) => StationCard(s, { expanded: S.open.has(s.code) && 'all', toggle: toggleOpen(s.code), reorder: S.reorder })),
     list.length > 1 && m('button.link', { type: 'button', onclick: () => { S.reorder = !S.reorder; } },
       S.reorder ? 'Klaar met volgorde' : 'Volgorde wijzigen'),
   ];
@@ -336,7 +317,7 @@ function FindTab() {
   const card = (station, metres) => StationCard(station, {
     metres,
     expanded: S.open.has(station.code) && 'all',
-    toggle: () => { if (!S.open.delete(station.code)) S.open.add(station.code); },
+    toggle: toggleOpen(station.code),
   });
   return [
     m('section.card', [
