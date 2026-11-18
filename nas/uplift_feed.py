@@ -5,8 +5,9 @@ Runs in a small Docker container on a home server (see nas/README.md). It:
 - keeps one connection to the GOVI/OpenGeo ZeroMQ stream (fair use: 1 connection per user),
   and reconnects when it goes dead (see listen_lifts.py);
 - saves every message in DATA_DIR/raw/YYYY-MM-DD/ (UTC date), for later analysis;
-- applies each message to the running status (same code as build_lifts.py) and keeps it in
-  DATA_DIR/lifts.json, so a restart carries on where it left off;
+- applies each message to the running status (same code as build_lifts.py): the daily full
+  status (~03:02 UTC) is the new baseline, live changes build on it. At start-up it replays the
+  archive of the last two days, so a restart or an update starts from last night's baseline;
 - uploads lifts.json to a public Cloudflare R2 bucket: at most every PUBLISH_EVERY_MIN minutes
   when something changed, and at least every PUBLISH_AT_LEAST_MIN minutes so the app can see
   the feed is alive;
@@ -23,6 +24,7 @@ Settings (environment):
   DATA_DIR (/data), PUBLISH_EVERY_MIN (1), PUBLISH_AT_LEAST_MIN (10), STATIONS_EVERY_DAYS (30),
   LIFTS_ZMQ
 """
+import glob
 import gzip
 import json
 import os
@@ -146,14 +148,35 @@ class StationRefresh(threading.Thread):
             log(f'Rebuilding the station list failed: {e}')
 
 
+# --- start-up --------------------------------------------------------------------------------
+
+def replay(known, days=2):
+    """Rebuild the status from the archived messages of the last `days` days, so a restart (or
+    new rules after an update) starts from last night's snapshot plus everything since, with the
+    lifts' history. None when there's no archive yet."""
+    dirs = sorted(glob.glob(os.path.join(DATA, 'raw', '????-??-??')))[-days:]
+    files = sorted(f for d in dirs for f in glob.glob(os.path.join(d, '*.xml')))
+    if not files:
+        return None
+    state, now = new_state(None, 'siri-fm'), datetime.now(timezone.utc)
+    for path in files:
+        try:
+            with open(path, 'rb') as f:
+                ingest(state, f.read(), known, now)
+        except (OSError, ET.ParseError) as e:
+            log(f'Skipping {path}: {e}')
+    log(f'Replayed {len(files)} messages from the archive; baseline: snapshot of {state.get("snapshot") or "(none yet)"}.')
+    return state
+
+
 # --- main loop -------------------------------------------------------------------------------
 
 def main():
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # docker stop: exit cleanly
     os.makedirs(DATA, exist_ok=True)
     state_path = os.path.join(DATA, 'lifts.json')
-    state = new_state(load_json(state_path) if os.path.exists(state_path) else None, 'siri-fm')
     known = current_known()
+    state = replay(known) or new_state(load_json(state_path) if os.path.exists(state_path) else None, 'siri-fm')
     log(f'Starting: {len(state["lifts"])} lifts known, publishing to '
         f'{f"R2 bucket {BUCKET}" if all(R2.values()) else "nowhere (no R2_* settings)"}.')
 

@@ -15,12 +15,14 @@ KNOWN['NL:CHB:LiftEquipment:8400058_013'] = 'ASD-LIF-013'
 
 
 def msg(conditions, at='2026-11-16T11:00:00Z'):
-    body = ''.join(
-        f'<FacilityCondition><FacilityRef>{ref}</FacilityRef>'
-        f'<FacilityStatus><Status>{s}</Status></FacilityStatus>'
-        + (f'<ValidityPeriod><StartTime>{start}</StartTime>' + (f'<EndTime>{end}</EndTime>' if end else '') + '</ValidityPeriod>' if start else '')
-        + '</FacilityCondition>'
-        for ref, s, start, end in conditions)
+    """conditions: (ref, status, start, end) or (ref, status, start, end, description)."""
+    def one(ref, s, start, end, desc=None):
+        return (f'<FacilityCondition><FacilityRef>{ref}</FacilityRef>'
+                f'<FacilityStatus><Status>{s}</Status>' + (f'<Description>{desc}</Description>' if desc else '')
+                + '</FacilityStatus>'
+                + (f'<ValidityPeriod><StartTime>{start}</StartTime>' + (f'<EndTime>{end}</EndTime>' if end else '') + '</ValidityPeriod>' if start else '')
+                + '</FacilityCondition>')
+    body = ''.join(one(*c) for c in conditions)
     return (f'<Siri xmlns="http://www.siri.org.uk/siri"><ServiceDelivery><FacilityMonitoringDelivery>'
             f'<ResponseTimestamp>{at}</ResponseTimestamp>{body}</FacilityMonitoringDelivery></ServiceDelivery></Siri>').encode()
 
@@ -129,6 +131,71 @@ class BuildLifts(unittest.TestCase):
         conditions, hb = bl.parse_message(xml)
         self.assertEqual(conditions, [])
         self.assertEqual(bl.iso(hb), '2026-11-16T12:25:00Z')
+
+
+
+# A snapshot needs SNAPSHOT_MIN lifts; pad it with lifts that are just working.
+FILLER = [f'XX-LIF-{n:03d}' for n in range(bl.SNAPSHOT_MIN)]
+KNOWN_ALL = dict(KNOWN, **{i: i for i in FILLER})
+
+
+def ingest(state, conditions, at):
+    bl.ingest(state, msg(conditions, at=at), KNOWN_ALL, NOW)
+
+
+def snapshot(state, conditions, at='2026-11-16T03:02:00Z'):
+    ingest(state, conditions + [(i, 'available', '2026-11-01T00:00:00Z', None) for i in FILLER], at)
+
+
+class Snapshot(unittest.TestCase):
+    def test_snapshot_is_the_new_baseline(self):
+        state = bl.new_state(None, 'siri-fm')
+        ingest(state, [('UT-LIF-007', 'notAvailable', '2026-11-15T20:00:00Z', None)], '2026-11-15T20:01:00Z')
+        ingest(state, [('UT-LIF-008', 'notAvailable', '2026-11-15T21:00:00Z', None)], '2026-11-15T21:01:00Z')
+        snapshot(state, [('UT-LIF-007', 'available', '2026-11-15T23:00:00Z', None),
+                         ('ASD-LIF-010', 'notAvailable', '2026-11-10T22:00:00Z', '2026-11-30T23:00:00Z', 'Storing')])
+        lifts = state['lifts']
+        self.assertEqual(state['snapshot'], '2026-11-16T03:02:00Z')
+        self.assertEqual(lifts['UT-LIF-007']['s'], 'available', 'the snapshot replaces what we had')
+        self.assertTrue(lifts['UT-LIF-007']['snap'])
+        self.assertEqual(lifts['ASD-LIF-010']['since'], '2026-11-10T22:00:00Z', 'start time from the snapshot')
+        self.assertEqual(lifts['ASD-LIF-010']['desc'], 'Storing')
+        self.assertNotIn('s', lifts['UT-LIF-008'], 'not in the snapshot: status forgotten')
+        self.assertEqual(lifts['UT-LIF-008']['h'], [['2026-11-15T21:00:00Z', 'notAvailable']], '... history kept')
+
+    def test_live_change_after_snapshot(self):
+        state = bl.new_state(None, 'siri-fm')
+        snapshot(state, [('UT-LIF-007', 'notAvailable', '2026-11-15T22:00:00Z', None)])
+        ingest(state, [('UT-LIF-007', 'available', '2026-11-16T08:00:00Z', None)], '2026-11-16T08:01:00Z')
+        e = state['lifts']['UT-LIF-007']
+        self.assertEqual((e['s'], e['since']), ('available', '2026-11-16T08:00:00Z'))
+        self.assertNotIn('snap', e, 'heard live now')
+        self.assertEqual(e['h'], [['2026-11-15T22:00:00Z', 'notAvailable'], ['2026-11-16T08:00:00Z', 'available']])
+
+    def test_repeat_keeps_what_the_snapshot_said(self):
+        state = bl.new_state(None, 'siri-fm')
+        snapshot(state, [('ASD-LIF-013', 'notAvailable', '2026-11-16T03:02:00Z', '2027-06-30T00:00:00Z',
+                          'Lift wordt in juni 2027 in gebruik genomen')])
+        # The 5-minute repeat: same status, old start, no end date or description.
+        ingest(state, [('NL:CHB:LiftEquipment:8400058_013', 'notAvailable', '2024-06-19T14:30:29Z', None)], '2026-11-16T03:06:00Z')
+        e = state['lifts']['ASD-LIF-013']
+        self.assertEqual(e['desc'], 'Lift wordt in juni 2027 in gebruik genomen')
+        self.assertEqual(e['until'], '2027-06-30T00:00:00Z')
+        self.assertEqual(e['since'], '2026-11-16T03:02:00Z')
+        self.assertNotIn('snap', e)
+
+    def test_history_keeps_24_hours_of_changes(self):
+        state = bl.new_state(None, 'siri-fm')
+        for t, s in [('2026-11-15T09:00:00Z', 'notAvailable'), ('2026-11-15T09:05:00Z', 'available'),
+                     ('2026-11-16T09:00:00Z', 'notAvailable'), ('2026-11-16T09:04:00Z', 'available')]:
+            ingest(state, [('UT-LIF-007', s, t, None)], t)
+        self.assertEqual(state['lifts']['UT-LIF-007']['h'], [['2026-11-16T09:00:00Z', 'notAvailable'],
+                                                             ['2026-11-16T09:04:00Z', 'available']])
+
+    def test_no_history_for_first_working_status(self):
+        state = bl.new_state(None, 'siri-fm')
+        snapshot(state, [('UT-LIF-007', 'available', '2026-11-16T01:00:00Z', None)])
+        self.assertNotIn('h', state['lifts']['UT-LIF-007'])
 
 
 if __name__ == '__main__':

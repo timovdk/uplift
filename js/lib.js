@@ -168,12 +168,25 @@ export function formatDistance(metres) {
 /** A lift's own status counts as stale when nothing was heard about it for this long. */
 export const STALE_HOURS = 36;
 
+// Display rules, from a day of real data (17–18 Nov 2026, see README "How the status is shown"):
+// most live outages are over within minutes (42 of 58 within half an hour), so a live outage
+// only counts as "buiten gebruik" after SHORT_OUTAGE_MIN; a lift that keeps having short outages
+// is flaky but mostly works, so it counts as working ("wisselend", the owner's call).
+export const SHORT_OUTAGE_MIN = 30;
+export const FLAKY_OUTAGES = 3; // short outages in the last 24 hours
+
 /**
  * What we can say about one lift right now.
- * -> { level: 'ok' | 'down' | 'partial' | 'unknown' | 'none',
- *      since?, until?, overdue?, desc?, planned?, stale?, updated?, inferred? }
+ * -> { level: 'ok' | 'down' | 'partial' | 'unknown' | 'none' | 'notyet',
+ *      since?, until?, overdue?, desc?, planned?, stale?, updated?, inferred?,
+ *      shortOutage?, flaky?, snapshot? }
  * 'none' = no status received at all for this lift.
+ * 'notyet' = a new lift that isn't in use yet ("wordt in juni 2027 in gebruik genomen").
  * inferred = 'ok' only because no outage was reported (see build_lifts.py), not an explicit "available".
+ * shortOutage = start of a live outage younger than SHORT_OUTAGE_MIN; the level stays 'ok'.
+ * flaky = number of outages in the last 24 hours, when the lift works now and had FLAKY_OUTAGES+.
+ * snapshot = the status comes from the nightly full status (time: updated); a repair since then
+ *   only shows up in the next one, so the app says when it was reported.
  */
 export function liftState(lift, status, now = new Date()) {
   const e = status && status.lifts && status.lifts[lift.id];
@@ -202,6 +215,15 @@ export function liftState(lift, status, now = new Date()) {
     if (out.level === 'down' && until < now) out.overdue = true;
   }
   if (out.updated && now - out.updated > STALE_HOURS * 3600e3) out.stale = true;
+
+  if (out.level === 'down' && /in gebruik genomen/i.test(out.desc)) out.level = 'notyet';
+  if (e.snap && s === e.s) out.snapshot = true;
+  if (out.level === 'down' && !e.snap && !until && since && now - since < SHORT_OUTAGE_MIN * 60e3) {
+    out.level = 'ok';
+    out.shortOutage = since;
+  }
+  const outages = (e.h || []).filter(([at, st]) => st === 'notAvailable' && now - new Date(at) < 24 * 3600e3).length;
+  if (out.level === 'ok' && outages >= FLAKY_OUTAGES) out.flaky = outages;
   return out;
 }
 
@@ -221,6 +243,7 @@ export const LEVEL_TEXT = {
   partial: 'Werkt beperkt',
   unknown: 'Status onbekend',
   none: 'Geen gegevens',
+  notyet: 'Nog niet in gebruik',
 };
 
 /**
@@ -228,7 +251,9 @@ export const LEVEL_TEXT = {
  * -> { level, text, down, unknown, total }
  */
 export function stationSummary(station, status, now = new Date()) {
-  const states = station.lifts.map((l) => liftState(l, status, now));
+  // New lifts that aren't in use yet don't count either way.
+  const states = station.lifts.map((l) => liftState(l, status, now)).filter((s) => s.level !== 'notyet');
+  if (!states.length) return { level: 'none', down: 0, unknown: 0, total: 0, text: 'Liften nog niet in gebruik' };
   const total = states.length;
   const down = states.filter((s) => s.level === 'down' || s.level === 'partial').length;
   const unknown = states.filter((s) => s.level === 'unknown' || s.level === 'none' || s.stale).length;

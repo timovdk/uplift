@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  formatDistance, formatMoment, liftState, moveFav, nearestStations, normalise, searchStations, stationSummary,
+  LEVEL_TEXT, formatDistance, formatMoment, liftState, moveFav, nearestStations, normalise, searchStations, stationSummary,
   toggleFav,
 } from '../js/lib.js';
 
@@ -120,6 +120,55 @@ test('stationSummary', () => {
   assert.equal(stationSummary(st(['A-LIF-001', 'A-LIF-008']), status, now).text, 'Geen storingen gemeld (2 liften)');
   assert.equal(liftState(lift('A-LIF-008'), status, now).inferred, true);
   assert.equal(liftState(lift('A-LIF-001'), status, now).inferred, undefined);
+});
+
+test('display rules from the real data: short outages, flaky lifts, snapshot, new lifts', () => {
+  // now = 2026-11-16T12:00:00Z
+  const rules = {
+    snapshot: '2026-11-16T03:02:00Z',
+    lifts: {
+      // Live outage of 20 minutes, no end date: still counts as working.
+      'B-LIF-001': { s: 'notAvailable', since: '2026-11-16T11:40:00Z', upd: '2026-11-16T11:41:00Z' },
+      // Live outage of 45 minutes: out of service.
+      'B-LIF-002': { s: 'notAvailable', since: '2026-11-16T11:15:00Z', upd: '2026-11-16T11:16:00Z' },
+      // Fresh outage with an expected end date: out of service straight away.
+      'B-LIF-003': { s: 'notAvailable', since: '2026-11-16T11:50:00Z', until: '2026-11-20T16:00:00Z', upd: '2026-11-16T11:51:00Z' },
+      // From last night's full status, no end date: out of service, reported at 03:02.
+      'B-LIF-004': { s: 'notAvailable', since: '2026-11-16T02:58:00Z', upd: '2026-11-16T03:02:00Z', snap: true },
+      // Flaky: three short outages today, working now.
+      'B-LIF-005': {
+        s: 'available', since: '2026-11-16T11:00:00Z', upd: '2026-11-16T11:01:00Z',
+        h: [['2026-11-16T08:00:00Z', 'notAvailable'], ['2026-11-16T08:05:00Z', 'available'],
+          ['2026-11-16T09:00:00Z', 'notAvailable'], ['2026-11-16T09:10:00Z', 'available'],
+          ['2026-11-16T10:50:00Z', 'notAvailable'], ['2026-11-16T11:00:00Z', 'available'],
+          ['2026-11-15T09:00:00Z', 'notAvailable']], // older than 24 hours: doesn't count
+      },
+      // Two short outages: not flaky yet.
+      'B-LIF-006': { s: 'available', upd: '2026-11-16T11:01:00Z', h: [['2026-11-16T08:00:00Z', 'notAvailable'], ['2026-11-16T09:00:00Z', 'notAvailable']] },
+      // A new lift that isn't in use yet.
+      'B-LIF-007': { s: 'notAvailable', since: '2026-11-16T03:02:00Z', until: '2027-06-30T00:00:00Z', desc: 'Lift wordt in juni 2027 in gebruik genomen', upd: '2026-11-16T11:56:00Z' },
+    },
+  };
+  const at = (id) => liftState(lift(id), rules, now);
+  const short = at('B-LIF-001');
+  assert.equal(short.level, 'ok', 'a 20-minute outage still counts as working');
+  assert.equal(short.shortOutage.toISOString(), '2026-11-16T11:40:00.000Z');
+  assert.equal(at('B-LIF-002').level, 'down', 'after 30 minutes it is out of service');
+  assert.equal(at('B-LIF-003').level, 'down', 'an announced end date means a real outage');
+  const snap = at('B-LIF-004');
+  assert.equal(snap.level, 'down');
+  assert.equal(snap.snapshot, true);
+  assert.equal(at('B-LIF-005').level, 'ok');
+  assert.equal(at('B-LIF-005').flaky, 3);
+  assert.equal(at('B-LIF-006').flaky, undefined);
+  assert.equal(at('B-LIF-007').level, 'notyet');
+  assert.equal(LEVEL_TEXT.notyet, 'Nog niet in gebruik');
+
+  const st = (ids) => ({ code: 'B', name: 'B', lifts: ids.map(lift) });
+  assert.equal(stationSummary(st(['B-LIF-001', 'B-LIF-005', 'B-LIF-007']), rules, now).text, 'Alle 2 liften werken',
+    'a lift not in use yet is left out; short outages and flaky lifts count as working');
+  assert.equal(stationSummary(st(['B-LIF-002', 'B-LIF-005']), rules, now).text, '1 van 2 liften buiten gebruik');
+  assert.equal(stationSummary(st(['B-LIF-007']), rules, now).text, 'Liften nog niet in gebruik');
 });
 
 test('favourites', () => {

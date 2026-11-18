@@ -231,8 +231,8 @@ input {
 .pill.down .pill-icon { background: var(--down); }
 .pill.partial { background: var(--partial-bg); color: var(--partial); }
 .pill.partial .pill-icon { background: var(--partial); }
-.pill.unknown, .pill.none { background: var(--unknown-bg); color: var(--unknown); }
-.pill.unknown .pill-icon, .pill.none .pill-icon { background: var(--unknown); }
+.pill.unknown, .pill.none, .pill.notyet { background: var(--unknown-bg); color: var(--unknown); }
+.pill.unknown .pill-icon, .pill.none .pill-icon, .pill.notyet .pill-icon { background: var(--unknown); }
 
 /* --- station cards ------------------------------------------------------- */
 

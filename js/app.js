@@ -132,7 +132,7 @@ function openTab(id) {
 
 // --- small components ------------------------------------------------------------
 
-const ICON = { ok: '✓', down: '✕', partial: '!', unknown: '?', none: '?' };
+const ICON = { ok: '✓', down: '✕', partial: '!', unknown: '?', none: '?', notyet: '–' };
 
 function StatusPill(level, text) {
   return m(`span.pill.${level}`, [m('span.pill-icon', { 'aria-hidden': 'true' }, ICON[level]), text]);
@@ -154,6 +154,13 @@ function LiftRow(lift) {
         ? `Zou tot ${formatMoment(st.until)} duren, maar is nog niet als hersteld gemeld`
         : `Verwacht tot ${formatMoment(st.until)}`);
     }
+    if (st.snapshot && !st.until) {
+      lines.push(`Gemeld in de nachtelijke update (${formatMoment(st.updated)}). Of hij inmiddels weer werkt, zien we pas bij de volgende.`);
+    }
+  } else if (st.level === 'notyet') {
+    lines.push(st.desc);
+  } else if (st.level === 'ok' && st.shortOutage) {
+    lines.push(`Storing gemeld om ${formatMoment(st.shortOutage).replace(/^vandaag /, '')}. Meestal werkt de lift binnen een half uur weer.`);
   } else if (st.level === 'unknown' && st.desc) {
     lines.push(describeUnknown(st.desc));
   } else if (st.level === 'none' && lift.monitored === false) {
@@ -167,6 +174,7 @@ function LiftRow(lift) {
     const until = st.planned.until ? ` tot ${formatMoment(st.planned.until)}` : '';
     lines.push(`Gepland buiten gebruik: ${formatMoment(st.planned.from)}${until}`);
   }
+  if (st.flaky) lines.push(`Had het afgelopen etmaal ${st.flaky} korte storingen, maar werkt meestal.`);
   if (st.stale && st.updated) lines.push(`Laatste bericht ${formatAge(st.updated)}; mogelijk verouderd.`);
 
   const map = lift.lat

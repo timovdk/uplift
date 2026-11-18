@@ -24,7 +24,7 @@ import re
 import sys
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'data', 'lifts.json')
@@ -135,9 +135,36 @@ def lift_id(ref, known):
     return known.get(m.group(1).upper()) if m else None
 
 
+# A message with at least this many lifts is DOVA's daily full status ("snapshot", ~03:02 UTC,
+# all ~440 lifts). Ordinary messages carry one or a few lifts.
+SNAPSHOT_MIN = 100
+# How long each lift's changes are kept (for "a few short outages today", see lib.js).
+HISTORY_H = 24
+
+
+def record(entry, t, status, now):
+    """Add a status change to the lift's recent history (entry['h'] = [[time, status], ...])."""
+    keep_from = now - timedelta(hours=HISTORY_H)
+    h = [x for x in entry.get('h', []) if parse_time(x[0]) >= keep_from]
+    if t and t >= keep_from and not (h and h[-1] == [iso(t), status]):
+        h.append([iso(t), status])
+    if h:
+        entry['h'] = h
+    else:
+        entry.pop('h', None)
+
+
+def clean(entry):
+    return {k: v for k, v in entry.items() if v is not None}
+
+
 def apply(state, conditions, known, now):
-    """Apply conditions to state['lifts'] in place. Returns the refs we couldn't link to a lift.
-    `known`: {feed id or lift id: lift id}, see load_known()."""
+    """Apply live conditions to state['lifts'] in place, on top of the last snapshot. Returns
+    the refs we couldn't link to a lift. `known`: {feed id or lift id: lift id}, see load_known().
+
+    A change replaces the lift's status. A repeat of the same status only confirms it: what we
+    already know (end date, description, start) is kept when the repeat doesn't say. (ASD-LIF-013
+    is repeated every 5 minutes without the "in gebruik genomen in juni 2027" the snapshot has.)"""
     lifts = state.setdefault('lifts', {})
     unmatched = set()
     for c in sorted(conditions, key=lambda c: c['at'] or datetime.min.replace(tzinfo=timezone.utc)):
@@ -156,19 +183,61 @@ def apply(state, conditions, known, now):
             entry['planned'] = {'s': c['status'], 'from': iso(c['start']), 'until': iso(c['end'])}
         else:
             if c['status'] != prev.get('s'):
-                entry['since'] = iso(c['start'] or at)
-            elif c['start']:
-                entry['since'] = iso(c['start'])
-            entry['s'] = c['status']
+                start = c['start'] or at
+                entry.update(s=c['status'], since=iso(start), until=iso(c['end']), desc=c['desc'])
+                if prev.get('s') or c['status'] != 'available':
+                    record(entry, start, c['status'], now)
+            else:
+                entry['since'] = prev.get('since') or iso(c['start'] or at)
+                entry['until'] = iso(c['end']) or prev.get('until')
+                entry['desc'] = c['desc'] or prev.get('desc')
             entry.pop('inferred', None)  # we heard it from the source now
-            entry['until'] = iso(c['end'])
-            entry['desc'] = c['desc']
-        lifts[lid] = {k: v for k, v in entry.items() if v is not None}
+            entry.pop('snap', None)      # ... and live, not just in last night's snapshot
+        lifts[lid] = clean(entry)
     # A planned outage whose end has passed is no longer interesting.
     for entry in lifts.values():
         p = entry.get('planned')
         if p and p.get('until') and parse_time(p['until']) < now:
             del entry['planned']
+    return unmatched
+
+
+def apply_snapshot(state, conditions, known, now):
+    """DOVA's daily full status is the new baseline: every lift gets the status from the
+    snapshot (marked `snap`, so the app can say "gemeld vannacht"), and lifts that aren't in it
+    lose their status. Only the recent history is carried over. Live messages then build on it.
+    Returns the refs we couldn't link to a lift."""
+    lifts = state.setdefault('lifts', {})
+    unmatched, seen = set(), set()
+    at = max((c['at'] for c in conditions if c['at']), default=now)
+    for c in conditions:
+        lid = lift_id(c['ref'], known)
+        if not lid:
+            unmatched.add(c['ref'])
+            continue
+        seen.add(lid)
+        prev = lifts.get(lid, {})
+        entry = {'upd': iso(at), 'snap': True}
+        if prev.get('h'):
+            entry['h'] = prev['h']
+        if c['start'] and c['start'] > now:
+            entry['planned'] = {'s': c['status'], 'from': iso(c['start']), 'until': iso(c['end'])}
+            if prev.get('s'):
+                entry.update(s=prev['s'], since=prev.get('since'))
+        else:
+            start = c['start'] or at
+            entry.update(s=c['status'], since=iso(start), until=iso(c['end']), desc=c['desc'])
+            # History is about changes: "working" for a lift we knew nothing about isn't one.
+            if c['status'] != prev.get('s') and (prev.get('s') or c['status'] != 'available'):
+                record(entry, start, c['status'], now)
+        lifts[lid] = clean(entry)
+    for lid in list(lifts):
+        if lid not in seen:  # not in the full status: we no longer know anything about it
+            if lifts[lid].get('h'):
+                lifts[lid] = {'h': lifts[lid]['h']}
+            else:
+                del lifts[lid]
+    state['snapshot'] = iso(at)
     return unmatched
 
 
@@ -224,6 +293,7 @@ def new_state(prev, source):
     if prev.get('source') != source:
         prev = {}  # never mix example data with real data
     return {'lifts': prev.get('lifts', {}), 'heartbeat': prev.get('heartbeat'), 'feed': prev.get('feed'),
+            'snapshot': prev.get('snapshot'),
             'unmatched': set(), 'received': 0, 'heard': set()}
 
 
@@ -234,7 +304,10 @@ def ingest(state, raw, known, now):
     conditions, heartbeat = parse_message(raw)
     state['received'] += len(conditions)
     state['heard'] |= {lift_id(c['ref'], known) for c in conditions} - {None}
-    state['unmatched'] |= apply(state, conditions, known, now)
+    if len(conditions) >= SNAPSHOT_MIN:
+        state['unmatched'] = apply_snapshot(state, conditions, known, now)  # fresh start, also for these
+    else:
+        state['unmatched'] |= apply(state, conditions, known, now)
     if heartbeat and (not state['heartbeat'] or heartbeat > parse_time(state['heartbeat'])):
         state['heartbeat'] = iso(heartbeat)
     for c in conditions:
@@ -251,6 +324,7 @@ def output(state, source, now, window=None):
         'source': source,
         'feed': state['feed'],          # newest message time
         'heartbeat': state['heartbeat'],
+        'snapshot': state.get('snapshot'),  # the daily full status this builds on
         'lifts': dict(sorted(state['lifts'].items())),
     }
     if state['unmatched']:

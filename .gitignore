@@ -5,3 +5,4 @@ __pycache__/
 data/lifts.json
 .venv/
 nas/.env
+data_from_nas/
