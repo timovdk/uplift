@@ -2,7 +2,7 @@
 import { DATA_URL } from './config.js';
 import {
   LEVEL_TEXT, formatAge, formatDistance, formatMoment, liftState, moveFav, nearestStations,
-  searchStations, stationSummary, toggleFav,
+  searchStations, sortLifts, stationSummary, toggleFav,
 } from './lib.js';
 import * as MSG from './messages.js';
 import { Mascot, randomCoat } from './mascot.js';
@@ -221,7 +221,7 @@ function StationCard(station, { metres, expanded, toggle, reorder } = {}) {
           onclick: () => star(station.code),
         }, fav ? '★' : '☆'),
     ]),
-    expanded === 'all' && m('ul.lifts', station.lifts.map(LiftRow)),
+    expanded === 'all' && m('ul.lifts', sortLifts(station.lifts).map(LiftRow)),
   ]);
 }
 

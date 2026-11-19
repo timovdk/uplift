@@ -163,6 +163,19 @@ export function formatDistance(metres) {
   return `${(metres / 1000).toFixed(metres < 10000 ? 1 : 0).replace('.', ',')} km`;
 }
 
+// --- lift order ------------------------------------------------------------------
+
+const LIFT_NAMES = new Intl.Collator('nl', { numeric: true, sensitivity: 'base', ignorePunctuation: true });
+const otherOperator = (lift) => /-INV-/.test(lift.id);
+
+/** A station's lifts by name, as people read them: "spoor 2" before "spoor 10", punctuation
+ * ignored. Lifts of other operators (INV codes, outside the station) at the end; equal names
+ * by code. The order of the source (by code) put newer lifts last. */
+export function sortLifts(lifts) {
+  return [...lifts].sort((a, b) => otherOperator(a) - otherOperator(b)
+    || LIFT_NAMES.compare(a.name, b.name) || LIFT_NAMES.compare(a.id, b.id));
+}
+
 // --- lift status -----------------------------------------------------------------
 
 // Display rules, from two days of real data (17–19 Nov 2026, see README "How the status is shown"):

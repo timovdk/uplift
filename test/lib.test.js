@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  LEVEL_TEXT, formatDistance, formatMoment, liftState, moveFav, nearestStations, normalise, searchStations, stationSummary,
+  LEVEL_TEXT, formatDistance, formatMoment, liftState, moveFav, nearestStations, normalise, searchStations, sortLifts, stationSummary,
   toggleFav,
 } from '../js/lib.js';
 
@@ -170,6 +170,20 @@ test('display rules from the real data: short outages, flaky lifts, snapshot, ne
     'a lift not in use yet is left out; short outages and flaky lifts count as working');
   assert.equal(stationSummary(st(['B-LIF-002', 'B-LIF-005']), rules, now).text, '1 van 2 liften buiten gebruik');
   assert.equal(stationSummary(st(['B-LIF-007']), rules, now).text, 'Liften nog niet in gebruik');
+});
+
+test('lifts sorted by name, numbers by value, other operators last', () => {
+  const names = (code) => sortLifts(data.stations.find((s) => s.code === code).lifts).map((l) => l.name);
+  const asd = names('ASD');
+  assert.deepEqual(asd.slice(0, 6), ['Oosttunnel spoor 2b', 'Oosttunnel spoor 4/5b', 'Oosttunnel spoor 7/8b',
+    'Oosttunnel spoor 10/11b', 'Oosttunnel spoor 13/14b', 'Oosttunnel spoor 15b']);
+  assert.ok(asd.indexOf('Westtunnel, spoor 1-2') < asd.indexOf('Westtunnel spoor 4/5a'), 'punctuation ignored');
+  assert.ok(asd.at(-1).includes('ASD-INV'), 'other operators at the end');
+  const ut = sortLifts(data.stations.find((s) => s.code === 'UT').lifts);
+  const spoor = ut.map((l) => l.name).filter((n) => n.startsWith('Spoor'));
+  assert.deepEqual(spoor, ['Spoor 1-4', 'Spoor 5/7', 'Spoor 8/9', 'Spoor 11/12', 'Spoor 14/15', 'Spoor 18/19', 'Spoor 20/21']);
+  const same = ut.filter((l) => l.name.startsWith('Stationsplein west')).map((l) => l.id);
+  assert.deepEqual(same, ['UT-LIF-002', 'UT-LIF-003', 'UT-LIF-004'], 'equal names by code');
 });
 
 test('favourites', () => {
