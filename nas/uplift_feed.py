@@ -149,6 +149,33 @@ class StationRefresh(threading.Thread):
             log(f'Rebuilding the station list failed: {e}')
 
 
+# --- connection ------------------------------------------------------------------------------
+
+# Logged, so we can see whether we were connected when a full status was sent (19 Nov 03:02 UTC
+# GOVI sent one that never arrived; with PUB/SUB a subscriber that's reconnecting misses it).
+CONNECTION_EVENTS = {
+    zmq.EVENT_CONNECTED: 'connected', zmq.EVENT_DISCONNECTED: 'DISCONNECTED',
+    zmq.EVENT_HANDSHAKE_SUCCEEDED: 'handshake ok', zmq.EVENT_CLOSED: 'closed',
+}
+
+
+def watch(sock):
+    events = 0
+    for e in CONNECTION_EVENTS:
+        events |= e
+    return sock.get_monitor_socket(events)
+
+
+def log_connection_events(mon):
+    from zmq.utils.monitor import recv_monitor_message
+    while True:
+        try:
+            e = recv_monitor_message(mon, zmq.NOBLOCK)
+        except zmq.Again:
+            return
+        log(f'Feed connection: {CONNECTION_EVENTS.get(e["event"], e["event"])}.')
+
+
 # --- start-up --------------------------------------------------------------------------------
 
 # An ordinary message is under 1 KB; a full status (~440 lifts) is ~100 KB.
@@ -195,27 +222,44 @@ def main():
     refresh, refresh_tried = None, 0.0
     ctx = zmq.Context()
     sock = connect(ctx)
+    mon = watch(sock)
     last_rx = time.time()
     last_push, dirty, failed = 0.0, True, False
     while True:
-        try:
-            parts = sock.recv_multipart()
-        except zmq.Again:
-            parts = None
-            if time.time() - last_rx > SILENCE_S:
-                log(f'Nothing for {SILENCE_S // 60} min, reconnecting.')
-                sock.close()
-                sock = connect(ctx)
-                last_rx = time.time()
+        poller = zmq.Poller()
+        poller.register(sock, zmq.POLLIN)
+        poller.register(mon, zmq.POLLIN)
+        ready = dict(poller.poll(5000))
+        if mon in ready:
+            log_connection_events(mon)
+        parts = None
+        if sock in ready:
+            try:
+                parts = sock.recv_multipart(zmq.NOBLOCK)
+            except zmq.Again:
+                pass
+        elif time.time() - last_rx > SILENCE_S:
+            log(f'Nothing for {SILENCE_S // 60} min, reconnecting.')
+            sock.disable_monitor()
+            mon.close()
+            sock.close()
+            sock = connect(ctx)
+            mon = watch(sock)
+            last_rx = time.time()
         if parts:
             body = b''.join(parts[1:])
             if body[:2] == b'\x1f\x8b':
                 body = gzip.decompress(body)
-            if b'FacilityMonitoringDelivery' in body or b'HeartbeatNotification' in body:
+            if b'FacilityMonitoringDelivery' not in body and b'HeartbeatNotification' not in body:
+                # Not expected; logged so a full status can't silently disappear here.
+                log(f'Ignored a message of {len(body)} bytes ({parts[0][:40]!r}): {body[:120]!r}')
+            else:
                 now = datetime.now(timezone.utc)
                 last_rx = time.time()
                 touch(ALIVE)
                 save_raw(body, now)
+                if len(body) > SNAPSHOT_BYTES:
+                    log(f'Full status received ({len(body) // 1024} KB).')
                 try:
                     if ingest(state, body, known, now):
                         dirty = True
