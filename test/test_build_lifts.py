@@ -92,38 +92,6 @@ class BuildLifts(unittest.TestCase):
         self.assertEqual(state['lifts']['ASD-LIF-013']['s'], 'notAvailable')
         self.assertEqual(state['lifts']['ASD-LIF-013']['since'], '2024-06-19T14:30:29Z')
 
-    def test_inference_from_listen_window(self):
-        window = {'from': '2026-11-16T11:00:00Z', 'to': '2026-11-16T11:11:00Z', 'messages': 3}
-        lifts = {
-            'UT-LIF-007': {'s': 'notAvailable', 'since': '2026-11-16T07:00:00Z'},      # not repeated -> back
-            'ASD-LIF-010': {'s': 'notAvailable', 'until': '2026-11-27T16:00:00Z'},     # long outage -> keep
-            'HT-LIF-003': {'s': 'unknown'},                                            # unknown -> keep
-            'DVNK-LIF-001': {'s': 'notAvailable'},                                     # repeated -> keep
-        }
-        monitored = {'UT-LIF-007', 'ASD-LIF-010', 'HT-LIF-003', 'DVNK-LIF-001', 'UT-LIF-008'}
-        n = bl.infer_from_window(lifts, {'DVNK-LIF-001'}, monitored, window, NOW)
-        self.assertEqual(n, 2)
-        self.assertEqual(lifts['UT-LIF-007']['s'], 'available')
-        self.assertTrue(lifts['UT-LIF-007']['inferred'])
-        self.assertEqual(lifts['ASD-LIF-010']['s'], 'notAvailable')
-        self.assertEqual(lifts['HT-LIF-003']['s'], 'unknown')
-        self.assertEqual(lifts['DVNK-LIF-001']['s'], 'notAvailable')
-        self.assertEqual(lifts['UT-LIF-008'], {'s': 'available', 'inferred': True, 'upd': '2026-11-16T11:11:00Z'})
-
-    def test_no_inference_when_window_short_or_silent(self):
-        lifts = {'UT-LIF-007': {'s': 'notAvailable'}}
-        short = {'from': '2026-11-16T11:00:00Z', 'to': '2026-11-16T11:04:00Z', 'messages': 3}
-        silent = {'from': '2026-11-16T11:00:00Z', 'to': '2026-11-16T11:11:00Z', 'messages': 0}
-        for w in (short, silent):
-            self.assertEqual(bl.infer_from_window(lifts, set(), {'UT-LIF-007'}, w, NOW), 0)
-        self.assertEqual(lifts['UT-LIF-007']['s'], 'notAvailable')
-
-    def test_explicit_message_clears_inferred(self):
-        state = {'lifts': {'UT-LIF-007': {'s': 'available', 'inferred': True, 'upd': '2026-11-16T09:00:00Z'}}}
-        c, _ = bl.parse_message(msg([('UT-LIF-007', 'available', '2026-11-16T10:00:00Z', None)]))
-        bl.apply(state, c, KNOWN, NOW)
-        self.assertNotIn('inferred', state['lifts']['UT-LIF-007'])
-
     def test_heartbeat(self):
         xml = (b'<Siri xmlns="http://www.siri.org.uk/siri"><HeartbeatNotification>'
                b'<RequestTimestamp>2026-11-16T13:25:00+01:00</RequestTimestamp><Status>true</Status>'

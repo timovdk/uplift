@@ -18,9 +18,7 @@ on every screen. See "Going live" below.
 
 Uplift shows what ProRail publishes as open data. That is not always what the NS app or NS
 Reisassistentie says: NS seems to have other or newer information. Some lifts aren't monitored
-at all. The app says this in Instellingen, shows "Status onbekend" / "Geen gegevens" instead of
-guessing, and says "Geen storing gemeld" (not "Werkt") when it only knows that no outage was
-reported.
+at all. The app says this in Instellingen and shows "Onbekend" instead of guessing.
 
 ## Where the data comes from
 
@@ -38,22 +36,25 @@ charges €1000 a year and pushes to your own server with a fixed IP. Not needed
 ### How the status stays complete
 
 What we saw on the stream (Nov 2026, BISON TMI9 Dutch SIRI-FM profile), and what the NAS data
-of 17–18 Nov showed:
+of 17–19 Nov showed:
 
-- **Once a day, at 03:02 UTC, DOVA sends the status of all lifts** (~440) in one message. It's
-  the only complete picture: 53 of the 61 outages in it had never come by as a change.
-- **In between, it sends some changes live**, mostly short blips: of the 58 outages that ended,
-  42 were over within 30 minutes. Outages that only appear in the daily status are probably
-  entered by hand; when they're fixed, we only hear it in the next one.
-- A heartbeat every 10 minutes; ASD-LIF-013 is repeated every 5 minutes.
+- **Now and then, DOVA sends the status of all lifts** (~440) in one message: on 18 Nov at
+  03:02 UTC, but not the night after (asked GOVI why). It's the only complete picture: 53 of the
+  61 outages in it had never come by as a change.
+- **In between, it sends changes live**: mostly short blips (of the 58 outages that ended, 42
+  were over within 30 minutes), but also repairs of outages we only knew from the full status
+  (4 of them within a day).
+- A heartbeat every 10 minutes; ASD-LIF-013 is repeated every 5 minutes. The statuses seen are
+  `available`, `notAvailable` and `unknown` (never `partiallyAvailable`).
 
 So the feed service (`nas/`, a small Docker container on a home server) keeps one connection
-open and treats **the daily status as the new baseline**: every lift gets its status from it,
+open and treats **a full status as the new baseline**: every lift gets its status from it,
 lifts that aren't in it lose theirs. Live changes then build on it until the next one
-(`scripts/build_lifts.py`). It keeps each lift's changes of the last 24 hours, archives every
+(`scripts/build_lifts.py`). In between, **a lift keeps its last known status**: changes come
+live, so silence mostly means nothing changed. It keeps each lift's changes of the last 24 hours, archives every
 raw message, and uploads `lifts.json` to a public Cloudflare R2 bucket on our own domain: at
 most every minute when something changed, at least every 10 minutes. At start-up it replays the
-archive of the last two days, so a restart or an update starts from last night's baseline.
+archive from the latest full status, so a restart or an update starts from the same baseline.
 Once a month it also rebuilds the station list (`scripts/build_stations.py`), checks it, and
 uploads it next to the status. The app reads both from the bucket (`js/config.js`). If the
 heartbeat has been missing for over an hour, or the status file is over 2 hours old, the app
@@ -61,17 +62,19 @@ shows a warning.
 
 ### How the status is shown
 
-Rules in `js/lib.js` (`liftState`), chosen from that day of data:
+Four statuses, **Werkt**, **Buiten gebruik**, **Onbekend** and **Nog niet in gebruik**; the rest
+goes in a note under the lift. Rules in `js/lib.js` (`liftState`), chosen from the data:
 
 | Situation | Shown as |
 |---|---|
 | Out of service, "wordt … in gebruik genomen" | grey **Nog niet in gebruik**; not counted for the station |
 | Out of service with an expected end date | red **Buiten gebruik**, "verwacht tot …" |
-| Out of service according to the nightly status, no end date | red, "gemeld in de nachtelijke update (04:02)" |
+| Out of service according to a full status, no end date | red, "gemeld in de volledige update van 18 nov 04:02; sindsdien geen nieuws" |
 | Live outage, less than 30 minutes old (no end date) | **Werkt**, "storing gemeld om …" |
 | Live outage of 30 minutes or more | red **Buiten gebruik** |
 | 3+ outages in the last 24 hours, working now | **Werkt**, "had het afgelopen etmaal … korte storingen" |
-| `unknown` | grey **Status onbekend** |
+| `unknown`, or never heard of | grey **Onbekend**, with the reason if known |
+| No news for a long time | the last known status (no automatic "unknown") |
 
 ## Going live
 

@@ -132,7 +132,7 @@ function openTab(id) {
 
 // --- small components ------------------------------------------------------------
 
-const ICON = { ok: '✓', down: '✕', partial: '!', unknown: '?', none: '?', notyet: '–' };
+const ICON = { ok: '✓', down: '✕', unknown: '?', notyet: '–' };
 
 function StatusPill(level, text) {
   return m(`span.pill.${level}`, [m('span.pill-icon', { 'aria-hidden': 'true' }, ICON[level]), text]);
@@ -155,7 +155,7 @@ function LiftRow(lift) {
         : `Verwacht tot ${formatMoment(st.until)}`);
     }
     if (st.snapshot && !st.until) {
-      lines.push(`Gemeld in de nachtelijke update (${formatMoment(st.updated)}). Of hij inmiddels weer werkt, zien we pas bij de volgende.`);
+      lines.push(`Gemeld in de volledige update van ${formatMoment(st.updated)}; sindsdien geen nieuws over deze lift.`);
     }
   } else if (st.level === 'notyet') {
     lines.push(st.desc);
@@ -163,9 +163,9 @@ function LiftRow(lift) {
     lines.push(`Storing gemeld om ${formatMoment(st.shortOutage).replace(/^vandaag /, '')}. Meestal werkt de lift binnen een half uur weer.`);
   } else if (st.level === 'unknown' && st.desc) {
     lines.push(describeUnknown(st.desc));
-  } else if (st.level === 'none' && lift.monitored === false) {
+  } else if (st.noData && lift.monitored === false) {
     lines.push('Deze lift wordt niet op afstand bewaakt, dus de status is nooit bekend.');
-  } else if (st.level === 'none') {
+  } else if (st.noData) {
     lines.push(lift.manager && lift.manager !== '?'
       ? `Beheer: ${lift.manager}. Van deze lift komt (nog) geen status binnen.`
       : 'Van deze lift komt (nog) geen status binnen.');
@@ -175,7 +175,6 @@ function LiftRow(lift) {
     lines.push(`Gepland buiten gebruik: ${formatMoment(st.planned.from)}${until}`);
   }
   if (st.flaky) lines.push(`Had het afgelopen etmaal ${st.flaky} korte storingen, maar werkt meestal.`);
-  if (st.stale && st.updated) lines.push(`Laatste bericht ${formatAge(st.updated)}; mogelijk verouderd.`);
 
   const map = lift.lat
     ? `https://www.openstreetmap.org/?mlat=${lift.lat}&mlon=${lift.lon}#map=19/${lift.lat}/${lift.lon}`
@@ -183,7 +182,7 @@ function LiftRow(lift) {
   return m('li.lift', { class: st.level }, [
     m('div.lift-head', [
       m('span.lift-name', [lift.name, lift.tracks && !/spoor/i.test(lift.name) && m('span.muted', ` (spoor ${lift.tracks})`)]),
-      StatusPill(st.stale && st.level === 'ok' ? 'unknown' : st.level, st.inferred ? 'Geen storing gemeld' : LEVEL_TEXT[st.level]),
+      StatusPill(st.level, LEVEL_TEXT[st.level]),
     ]),
     lines.map((l) => m('p.lift-note', l)),
     m('p.lift-meta', [

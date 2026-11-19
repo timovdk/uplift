@@ -165,32 +165,28 @@ export function formatDistance(metres) {
 
 // --- lift status -----------------------------------------------------------------
 
-/** A lift's own status counts as stale when nothing was heard about it for this long. */
-export const STALE_HOURS = 36;
-
-// Display rules, from a day of real data (17–18 Nov 2026, see README "How the status is shown"):
+// Display rules, from two days of real data (17–19 Nov 2026, see README "How the status is shown"):
 // most live outages are over within minutes (42 of 58 within half an hour), so a live outage
 // only counts as "buiten gebruik" after SHORT_OUTAGE_MIN; a lift that keeps having short outages
 // is flaky but mostly works, so it counts as working ("wisselend", the owner's call).
+// A lift keeps its last known status until a new message comes: the full status doesn't come
+// daily, and changes (also repairs) do come live, so silence mostly means nothing changed.
 export const SHORT_OUTAGE_MIN = 30;
 export const FLAKY_OUTAGES = 3; // short outages in the last 24 hours
 
 /**
- * What we can say about one lift right now.
- * -> { level: 'ok' | 'down' | 'partial' | 'unknown' | 'none' | 'notyet',
- *      since?, until?, overdue?, desc?, planned?, stale?, updated?, inferred?,
- *      shortOutage?, flaky?, snapshot? }
- * 'none' = no status received at all for this lift.
+ * What we can say about one lift right now. Four levels, the rest is detail for the notes:
+ * -> { level: 'ok' | 'down' | 'unknown' | 'notyet',
+ *      since?, until?, overdue?, desc?, planned?, updated?, noData?, shortOutage?, flaky?, snapshot? }
+ * 'unknown' = the feed says "unknown", or (noData) we never heard anything about this lift.
  * 'notyet' = a new lift that isn't in use yet ("wordt in juni 2027 in gebruik genomen").
- * inferred = 'ok' only because no outage was reported (see build_lifts.py), not an explicit "available".
  * shortOutage = start of a live outage younger than SHORT_OUTAGE_MIN; the level stays 'ok'.
  * flaky = number of outages in the last 24 hours, when the lift works now and had FLAKY_OUTAGES+.
- * snapshot = the status comes from the nightly full status (time: updated); a repair since then
- *   only shows up in the next one, so the app says when it was reported.
+ * snapshot = the status comes from a full status (time: updated); the app shows its date.
  */
 export function liftState(lift, status, now = new Date()) {
   const e = status && status.lifts && status.lifts[lift.id];
-  if (!e) return { level: 'none' };
+  if (!e || !e.s) return { level: 'unknown', noData: true };
   const t = (s) => (s ? new Date(s) : null);
   const out = { updated: t(e.upd), desc: e.desc || '' };
   let s = e.s;
@@ -208,14 +204,11 @@ export function liftState(lift, status, now = new Date()) {
     }
   }
   out.level = levelOf(s);
-  if (e.inferred && s === e.s && out.level === 'ok') out.inferred = true;
   if (since) out.since = since;
   if (until) {
     out.until = until;
     if (out.level === 'down' && until < now) out.overdue = true;
   }
-  if (out.updated && now - out.updated > STALE_HOURS * 3600e3) out.stale = true;
-
   if (out.level === 'down' && /in gebruik genomen/i.test(out.desc)) out.level = 'notyet';
   if (e.snap && s === e.s) out.snapshot = true;
   if (out.level === 'down' && !e.snap && !until && since && now - since < SHORT_OUTAGE_MIN * 60e3) {
@@ -230,19 +223,17 @@ export function liftState(lift, status, now = new Date()) {
 function levelOf(s) {
   switch (s) {
     case 'available': case 'added': return 'ok';
-    case 'notAvailable': case 'removed': return 'down';
-    case 'partiallyAvailable': return 'partial';
-    case 'unknown': case 'neverMonitored': return 'unknown';
-    default: return 'none';
+    // partiallyAvailable never occurred in the data; if it does, a lift that only partly works
+    // isn't one to count on.
+    case 'notAvailable': case 'removed': case 'partiallyAvailable': return 'down';
+    default: return 'unknown'; // 'unknown', 'neverMonitored', or something new
   }
 }
 
 export const LEVEL_TEXT = {
   ok: 'Werkt',
   down: 'Buiten gebruik',
-  partial: 'Werkt beperkt',
-  unknown: 'Status onbekend',
-  none: 'Geen gegevens',
+  unknown: 'Onbekend',
   notyet: 'Nog niet in gebruik',
 };
 
@@ -253,10 +244,10 @@ export const LEVEL_TEXT = {
 export function stationSummary(station, status, now = new Date()) {
   // New lifts that aren't in use yet don't count either way.
   const states = station.lifts.map((l) => liftState(l, status, now)).filter((s) => s.level !== 'notyet');
-  if (!states.length) return { level: 'none', down: 0, unknown: 0, total: 0, text: 'Liften nog niet in gebruik' };
+  if (!states.length) return { level: 'notyet', down: 0, unknown: 0, total: 0, text: 'Liften nog niet in gebruik' };
   const total = states.length;
-  const down = states.filter((s) => s.level === 'down' || s.level === 'partial').length;
-  const unknown = states.filter((s) => s.level === 'unknown' || s.level === 'none' || s.stale).length;
+  const down = states.filter((s) => s.level === 'down').length;
+  const unknown = states.filter((s) => s.level === 'unknown').length;
   const liften = (n) => (n === 1 ? 'lift' : 'liften');
   if (down) {
     const extra = unknown ? `, ${unknown} onbekend` : '';
@@ -265,13 +256,8 @@ export function stationSummary(station, status, now = new Date()) {
   if (unknown === total) {
     return { level: 'unknown', down, unknown, total, text: total === 1 ? 'Status van de lift onbekend' : `Status van alle ${total} liften onbekend` };
   }
-  const quiet = states.some((s) => s.inferred); // "no outage reported" rather than "confirmed working"
   if (unknown) {
-    const ok = quiet ? 'zonder storing' : (total - unknown === 1 ? 'werkt' : 'werken');
-    return { level: 'unknown', down, unknown, total, text: `${total - unknown} van ${total} liften ${ok}, ${unknown} onbekend` };
-  }
-  if (quiet) {
-    return { level: 'ok', down, unknown, total, text: total === 1 ? 'Geen storing gemeld' : `Geen storingen gemeld (${total} liften)` };
+    return { level: 'unknown', down, unknown, total, text: `${total - unknown} van ${total} liften ${total - unknown === 1 ? 'werkt' : 'werken'}, ${unknown} onbekend` };
   }
   return { level: 'ok', down, unknown, total, text: total === 1 ? 'De lift werkt' : `Alle ${total} liften werken` };
 }

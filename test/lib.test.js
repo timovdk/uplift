@@ -87,7 +87,6 @@ const status = {
     'A-LIF-005': { s: 'available', upd: '2026-11-16T07:00:00Z', planned: { s: 'notAvailable', from: '2026-11-16T10:00:00Z', until: '2026-11-16T18:00:00Z' } },
     'A-LIF-006': { s: 'available', upd: '2026-11-16T07:00:00Z', planned: { s: 'notAvailable', from: '2027-01-12T05:00:00Z' } },
     'A-LIF-007': { s: 'unknown', desc: 'Object not monitored.', upd: '2026-11-16T07:00:00Z' },
-    'A-LIF-008': { s: 'available', inferred: true, upd: '2026-11-16T11:30:00Z' },
   },
 };
 
@@ -97,15 +96,19 @@ test('liftState', () => {
   const overdue = liftState(lift('A-LIF-003'), status, now);
   assert.equal(overdue.level, 'down');
   assert.equal(overdue.overdue, true, 'end time passed but no "available" message yet');
-  assert.equal(liftState(lift('A-LIF-004'), status, now).stale, true, 'no news for 3 days');
+  assert.equal(liftState(lift('A-LIF-004'), status, now).level, 'ok', 'no news for 3 days: keeps its last known status');
   const started = liftState(lift('A-LIF-005'), status, now);
   assert.equal(started.level, 'down', 'planned outage has begun');
   const later = liftState(lift('A-LIF-006'), status, now);
   assert.equal(later.level, 'ok');
   assert.equal(later.planned.level, 'down');
   assert.equal(liftState(lift('A-LIF-007'), status, now).level, 'unknown');
-  assert.equal(liftState(lift('A-LIF-999'), status, now).level, 'none');
-  assert.equal(liftState(lift('A-LIF-001'), null, now).level, 'none');
+  const never = liftState(lift('A-LIF-999'), status, now);
+  assert.deepEqual([never.level, never.noData], ['unknown', true], 'never heard of: unknown');
+  assert.equal(liftState(lift('A-LIF-001'), null, now).level, 'unknown');
+  assert.equal(liftState(lift('A-LIF-001'), { lifts: { 'A-LIF-001': { h: [] } } }, now).noData, true, 'only history left');
+  assert.equal(liftState(lift('A-LIF-001'), { lifts: { 'A-LIF-001': { s: 'partiallyAvailable' } } }, now).level, 'down');
+  assert.deepEqual(Object.keys(LEVEL_TEXT), ['ok', 'down', 'unknown', 'notyet'], 'four statuses');
 });
 
 test('stationSummary', () => {
@@ -114,12 +117,10 @@ test('stationSummary', () => {
   const down = stationSummary(st(['A-LIF-001', 'A-LIF-002', 'A-LIF-007']), status, now);
   assert.equal(down.level, 'down');
   assert.equal(down.text, '1 van 3 liften buiten gebruik, 1 onbekend');
-  const unk = stationSummary(st(['A-LIF-001', 'A-LIF-004']), status, now);
-  assert.equal(unk.level, 'unknown', 'a stale lift is not reported as working');
+  assert.equal(stationSummary(st(['A-LIF-001', 'A-LIF-004']), status, now).text, 'Alle 2 liften werken',
+    'old news is still the last known status');
+  assert.equal(stationSummary(st(['A-LIF-001', 'A-LIF-999']), status, now).text, '1 van 2 liften werkt, 1 onbekend');
   assert.equal(stationSummary(st(['A-LIF-998', 'A-LIF-999']), status, now).text, 'Status van alle 2 liften onbekend');
-  assert.equal(stationSummary(st(['A-LIF-001', 'A-LIF-008']), status, now).text, 'Geen storingen gemeld (2 liften)');
-  assert.equal(liftState(lift('A-LIF-008'), status, now).inferred, true);
-  assert.equal(liftState(lift('A-LIF-001'), status, now).inferred, undefined);
 });
 
 test('display rules from the real data: short outages, flaky lifts, snapshot, new lifts', () => {

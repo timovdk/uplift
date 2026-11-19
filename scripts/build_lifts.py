@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """Build data/lifts.json: the latest known status of every lift, from SIRI-FM messages.
 
-How the feed works (BISON TMI9, Dutch SIRI-FM profile): DOVA polls ProRail every 5 minutes
-and publishes a message for every status *change*, plus once a day the status of *all* lifts.
-It also re-sends every lift that is still out of service each round. So one message doesn't tell
-the whole story. This script keeps a running state: it starts from the previous lifts.json (the
-one that's currently published), applies the new messages on top (newest wins), and then uses
-the listen window to draw conclusions from silence (see infer_from_window).
+How the feed works (BISON TMI9 Dutch SIRI-FM profile, and what we saw in Nov 2026): DOVA sends
+some status changes live, mostly short blips, and now and then (seen 18 Nov 03:02 UTC, not the
+night after) the status of *all* lifts in one message. That full status is the new baseline
+(apply_snapshot); live changes build on it (apply). In between, a lift keeps its last known
+status. Each lift keeps its changes of the last 24 hours, for the display rules in js/lib.js.
 
 Feed ids ("NL:CHB:LiftEquipment:8400058_013") are mapped to lift codes ("ASD-LIF-013") via
 data/stations.json, which build_stations.py makes from DOVA's NeTEx-EPIAP file.
 
-Usage:
-  python3 scripts/listen_lifts.py .cache/feed            # collect messages (11 min)
-  python3 scripts/build_lifts.py --previous FILE_OR_URL --window .cache/feed/window.json .cache/feed/msg_*.xml
+Usage (the feed service in nas/ does this continuously; this is for trying things locally):
+  python3 scripts/build_lifts.py --out /tmp/lifts.json path/to/raw/*/*.xml   # from archived messages
   python3 scripts/build_lifts.py --example               # build from the made-up test fixture
 """
 import argparse
@@ -135,8 +133,8 @@ def lift_id(ref, known):
     return known.get(m.group(1).upper()) if m else None
 
 
-# A message with at least this many lifts is DOVA's daily full status ("snapshot", ~03:02 UTC,
-# all ~440 lifts). Ordinary messages carry one or a few lifts.
+# A message with at least this many lifts is DOVA's full status ("snapshot", all ~440 lifts;
+# seen 18 Nov 03:02 UTC, not daily). Ordinary messages carry one or a few lifts.
 SNAPSHOT_MIN = 100
 # How long each lift's changes are kept (for "a few short outages today", see lib.js).
 HISTORY_H = 24
@@ -191,7 +189,6 @@ def apply(state, conditions, known, now):
                 entry['since'] = prev.get('since') or iso(c['start'] or at)
                 entry['until'] = iso(c['end']) or prev.get('until')
                 entry['desc'] = c['desc'] or prev.get('desc')
-            entry.pop('inferred', None)  # we heard it from the source now
             entry.pop('snap', None)      # ... and live, not just in last night's snapshot
         lifts[lid] = clean(entry)
     # A planned outage whose end has passed is no longer interesting.
@@ -203,7 +200,7 @@ def apply(state, conditions, known, now):
 
 
 def apply_snapshot(state, conditions, known, now):
-    """DOVA's daily full status is the new baseline: every lift gets the status from the
+    """DOVA's full status is the new baseline: every lift gets the status from the
     snapshot (marked `snap`, so the app can say "gemeld vannacht"), and lifts that aren't in it
     lose their status. Only the recent history is carried over. Live messages then build on it.
     Returns the refs we couldn't link to a lift."""
@@ -241,52 +238,6 @@ def apply_snapshot(state, conditions, known, now):
     return unmatched
 
 
-# A listen window must cover at least two of DOVA's 5-minute rounds before we draw conclusions
-# from what was *not* said.
-MIN_WINDOW_S = 10 * 60
-DOWN = ('notAvailable', 'partiallyAvailable')
-
-
-def feed_lifts(path=STATIONS):
-    """Lift ids that are in the live feed and monitored."""
-    with open(path, encoding='utf-8') as f:
-        return {l['id'] for st in json.load(f)['stations'] for l in st['lifts']
-                if l.get('ref') and l.get('monitored', True)}
-
-
-def infer_from_window(lifts, heard, monitored, window, now):
-    """NOT USED BY DEFAULT (--infer). Observed 16 Nov 2026: one lift was re-sent every 5 min, but
-    most broken lifts only came again in a larger batch (at 16:56; interval unknown). Only switch
-    this on once we know every broken lift is re-sent within the listen window.
-
-    Assumes DOVA re-sends every lift that is still out of service each 5-minute round. So after a
-    long enough window, a monitored lift that wasn't reported as down isn't known to be down:
-    - a lift we had as down (without a future end date) that wasn't repeated is working again;
-    - a lift we know nothing about yet gets 'available', marked as inferred ("geen storing gemeld").
-    `heard`: lift ids that had any message in this window. Returns the number of lifts changed."""
-    start, end = parse_time(window.get('from')), parse_time(window.get('to'))
-    if not start or not end or (end - start).total_seconds() < MIN_WINDOW_S or not window.get('messages'):
-        return 0  # too short, or nothing at all came in (feed down?): don't guess
-    changed = 0
-    for lid in monitored - heard:
-        e = lifts.setdefault(lid, {})
-        s = e.get('s')
-        if s in DOWN:
-            until = parse_time(e.get('until'))
-            if until and until > now:
-                continue  # announced long outage: keep it until it's lifted explicitly
-            e.update(s='available', since=iso(start), inferred=True)
-            e.pop('until', None)
-            e.pop('desc', None)
-            changed += 1
-        elif s is None:
-            e.update(s='available', inferred=True)
-            changed += 1
-        if e.get('s') == 'available':
-            e['upd'] = iso(end)  # confirmed: still no outage reported
-    return changed
-
-
 def new_state(prev, source):
     """Running state from a previous lifts.json (or nothing). Never mixes sources."""
     prev = prev or {}
@@ -294,7 +245,7 @@ def new_state(prev, source):
         prev = {}  # never mix example data with real data
     return {'lifts': prev.get('lifts', {}), 'heartbeat': prev.get('heartbeat'), 'feed': prev.get('feed'),
             'snapshot': prev.get('snapshot'),
-            'unmatched': set(), 'received': 0, 'heard': set()}
+            'unmatched': set(), 'received': 0}
 
 
 def ingest(state, raw, known, now):
@@ -303,7 +254,6 @@ def ingest(state, raw, known, now):
         raw = gzip.decompress(raw)
     conditions, heartbeat = parse_message(raw)
     state['received'] += len(conditions)
-    state['heard'] |= {lift_id(c['ref'], known) for c in conditions} - {None}
     if len(conditions) >= SNAPSHOT_MIN:
         state['unmatched'] = apply_snapshot(state, conditions, known, now)  # fresh start, also for these
     else:
@@ -316,15 +266,14 @@ def ingest(state, raw, known, now):
     return len(conditions)
 
 
-def output(state, source, now, window=None):
+def output(state, source, now):
     """The lifts.json content for this state."""
     out = {
         'generated': iso(now),
-        'window': window,
         'source': source,
         'feed': state['feed'],          # newest message time
         'heartbeat': state['heartbeat'],
-        'snapshot': state.get('snapshot'),  # the daily full status this builds on
+        'snapshot': state.get('snapshot'),  # the full status this builds on
         'lifts': dict(sorted(state['lifts'].items())),
     }
     if state['unmatched']:
@@ -346,9 +295,6 @@ def main():
     ap.add_argument('--previous', help='previous lifts.json (path or URL)')
     ap.add_argument('--source', default='siri-fm')
     ap.add_argument('--example', action='store_true', help='use the made-up test fixture')
-    ap.add_argument('--window', help='window.json written by listen_lifts.py')
-    ap.add_argument('--infer', action='store_true',
-                    help='conclude from silence (see infer_from_window); off until the re-send rhythm is known')
     ap.add_argument('--out', default=OUT)
     args = ap.parse_args()
 
@@ -367,13 +313,11 @@ def main():
         except ET.ParseError as e:
             print(f'Skipping {path}: {e}', file=sys.stderr)
 
-    window = load_json(args.window) if args.window else None
-    inferred = infer_from_window(state['lifts'], state['heard'], feed_lifts(), window, now) if window and args.infer else 0
 
-    write_json(args.out, output(state, args.source, now, window))
+    write_json(args.out, output(state, args.source, now))
     down = sum(1 for l in state['lifts'].values() if l.get('s') == 'notAvailable')
     print(f'{state["received"]} conditions read, {len(state["lifts"])} lifts known, {down} not available, '
-          f'{len(state["unmatched"])} unmatched refs, {inferred} inferred -> {os.path.relpath(args.out, ROOT)}')
+          f'{len(state["unmatched"])} unmatched refs -> {os.path.relpath(args.out, ROOT)}')
 
 
 if __name__ == '__main__':

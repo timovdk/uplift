@@ -14,8 +14,6 @@
   --ok-bg: #e5f4ea;
   --down: #a32020;
   --down-bg: #fbe9e9;
-  --partial: #7a5300;
-  --partial-bg: #fdf1d8;
   --unknown: #4f4f4f;
   --unknown-bg: #ececea;
   --example-bg: #fff3c4;
@@ -39,8 +37,6 @@
     --ok-bg: #16301f;
     --down: #ff8a8a;
     --down-bg: #3a1a1a;
-    --partial: #f2c46b;
-    --partial-bg: #3a2f14;
     --unknown: #c4c4c4;
     --unknown-bg: #2c2c2c;
     --example-bg: #3a3214;
@@ -61,8 +57,6 @@
   --ok-bg: #16301f;
   --down: #ff8a8a;
   --down-bg: #3a1a1a;
-  --partial: #f2c46b;
-  --partial-bg: #3a2f14;
   --unknown: #c4c4c4;
   --unknown-bg: #2c2c2c;
   --example-bg: #3a3214;
@@ -229,10 +223,8 @@ input {
 .pill.ok .pill-icon { background: var(--ok); }
 .pill.down { background: var(--down-bg); color: var(--down); }
 .pill.down .pill-icon { background: var(--down); }
-.pill.partial { background: var(--partial-bg); color: var(--partial); }
-.pill.partial .pill-icon { background: var(--partial); }
-.pill.unknown, .pill.none, .pill.notyet { background: var(--unknown-bg); color: var(--unknown); }
-.pill.unknown .pill-icon, .pill.none .pill-icon, .pill.notyet .pill-icon { background: var(--unknown); }
+.pill.unknown, .pill.notyet { background: var(--unknown-bg); color: var(--unknown); }
+.pill.unknown .pill-icon, .pill.notyet .pill-icon { background: var(--unknown); }
 
 /* --- station cards ------------------------------------------------------- */
 

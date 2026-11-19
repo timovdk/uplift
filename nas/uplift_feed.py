@@ -5,9 +5,10 @@ Runs in a small Docker container on a home server (see nas/README.md). It:
 - keeps one connection to the GOVI/OpenGeo ZeroMQ stream (fair use: 1 connection per user),
   and reconnects when it goes dead (see listen_lifts.py);
 - saves every message in DATA_DIR/raw/YYYY-MM-DD/ (UTC date), for later analysis;
-- applies each message to the running status (same code as build_lifts.py): the daily full
-  status (~03:02 UTC) is the new baseline, live changes build on it. At start-up it replays the
-  archive of the last two days, so a restart or an update starts from last night's baseline;
+- applies each message to the running status (same code as build_lifts.py): a full status
+  (all lifts in one message; seen 18 Nov 03:02 UTC, but not daily) is the new baseline, live
+  changes build on it. At start-up it replays the archive from the latest full status, so a
+  restart or an update starts from the same baseline;
 - uploads lifts.json to a public Cloudflare R2 bucket: at most every PUBLISH_EVERY_MIN minutes
   when something changed, and at least every PUBLISH_AT_LEAST_MIN minutes so the app can see
   the feed is alive;
@@ -150,14 +151,25 @@ class StationRefresh(threading.Thread):
 
 # --- start-up --------------------------------------------------------------------------------
 
+# An ordinary message is under 1 KB; a full status (~440 lifts) is ~100 KB.
+SNAPSHOT_BYTES = 20_000
+
+
 def replay(known, days=2):
-    """Rebuild the status from the archived messages of the last `days` days, so a restart (or
-    new rules after an update) starts from last night's snapshot plus everything since, with the
-    lifts' history. None when there's no archive yet."""
-    dirs = sorted(glob.glob(os.path.join(DATA, 'raw', '????-??-??')))[-days:]
+    """Rebuild the status from the archive: from the latest full status (however old: it doesn't
+    come daily) up to now, or the last `days` days when there's none. So a restart, or new rules
+    after an update, starts from the same baseline, with the lifts' history. None when there's
+    no archive yet."""
+    dirs = sorted(glob.glob(os.path.join(DATA, 'raw', '????-??-??')))
     files = sorted(f for d in dirs for f in glob.glob(os.path.join(d, '*.xml')))
     if not files:
         return None
+    last_snapshot = next((i for i in range(len(files) - 1, -1, -1) if os.path.getsize(files[i]) > SNAPSHOT_BYTES), None)
+    if last_snapshot is not None:
+        files = files[last_snapshot:]
+    else:
+        recent = {os.path.dirname(f) for f in files[-1:]} | set(dirs[-days:])
+        files = [f for f in files if os.path.dirname(f) in recent]
     state, now = new_state(None, 'siri-fm'), datetime.now(timezone.utc)
     for path in files:
         try:
@@ -165,7 +177,7 @@ def replay(known, days=2):
                 ingest(state, f.read(), known, now)
         except (OSError, ET.ParseError) as e:
             log(f'Skipping {path}: {e}')
-    log(f'Replayed {len(files)} messages from the archive; baseline: snapshot of {state.get("snapshot") or "(none yet)"}.')
+    log(f'Replayed {len(files)} messages from the archive; baseline: full status of {state.get("snapshot") or "(none yet)"}.')
     return state
 
 
