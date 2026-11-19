@@ -68,7 +68,8 @@ Update: `git -C src pull && docker compose up -d --build`.
 ## Good to know
 
 - On 17 Nov 2026 a connection went silently dead at 03:56 CET, probably at a
-  restart. Now ZeroMQ pings the server every 30 s and reconnects after 90 s without an answer;
+  restart. Now ZeroMQ pings the server every 10 s and reconnects after 30 s without an answer
+  (a closed connection right away);
   as a backup, the service reconnects after 12 minutes without any message.
 - The container is *unhealthy* when no message came in for 15 minutes.
 - After a fresh start (empty archive) most lifts are "unknown" until the next full status.

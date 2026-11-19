@@ -37,11 +37,13 @@ def connect(ctx):
     sock = ctx.socket(zmq.SUB)
     sock.setsockopt(zmq.RCVTIMEO, 5000)
     sock.setsockopt(zmq.LINGER, 0)
-    # ZeroMQ's own ping/pong (the server answers, tested 17 Nov 2026): a few bytes every 30 s
-    # on the one connection we have. A dead connection is noticed within ~90 s and ZeroMQ
-    # reconnects by itself. SILENCE_S is the backup.
-    sock.setsockopt(zmq.HEARTBEAT_IVL, 30_000)
-    sock.setsockopt(zmq.HEARTBEAT_TIMEOUT, 90_000)
+    # ZeroMQ's own ping/pong (the server answers, tested 17 Nov 2026): a few bytes every 10 s
+    # on the one connection we have. A silently dead connection is noticed within ~30 s and
+    # ZeroMQ reconnects by itself (a closed one right away). Stricter since 19 Nov, when a full
+    # status went missing around 03:02. Unlike universal-sub-pubsub's "reconnect after 60 s
+    # without data", a healthy but quiet connection is never dropped. SILENCE_S is the backup.
+    sock.setsockopt(zmq.HEARTBEAT_IVL, 10_000)
+    sock.setsockopt(zmq.HEARTBEAT_TIMEOUT, 30_000)
     sock.setsockopt(zmq.TCP_KEEPALIVE, 1)
     sock.setsockopt(zmq.TCP_KEEPALIVE_IDLE, 60)
     sock.setsockopt(zmq.TCP_KEEPALIVE_INTVL, 30)

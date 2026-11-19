@@ -168,12 +168,27 @@ export function formatDistance(metres) {
 const LIFT_NAMES = new Intl.Collator('nl', { numeric: true, sensitivity: 'base', ignorePunctuation: true });
 const otherOperator = (lift) => /-INV-/.test(lift.id);
 
-/** A station's lifts by name, as people read them: "spoor 2" before "spoor 10", punctuation
- * ignored. Lifts of other operators (INV codes, outside the station) at the end; equal names
- * by code. The order of the source (by code) put newer lifts last. */
+/** The first track a lift serves ("4/5A" -> 4, "Westtunnel, spoor 1-2" -> 1), or null for
+ * lifts that don't go to a platform (entrances, bus platforms, bridges). From the register's
+ * track field, else from the name ("spoor", "perron", "sp"). */
+export function liftTrack(lift) {
+  const fromTracks = lift.tracks && String(lift.tracks).match(/\d+/);
+  if (fromTracks) return Number(fromTracks[0]);
+  const fromName = lift.name.match(/\b(?:spoor|perron|sp)\.?\s*(\d+)/i);
+  return fromName ? Number(fromName[1]) : null;
+}
+
+/** A station's lifts in a useful order: lifts to the platforms first, by track ("spoor 2"
+ * before "spoor 10"); then the others by name (punctuation ignored); lifts of other operators
+ * (INV codes, outside the station) last; equal names by code. (The source orders by code,
+ * which put "spoor 20/21" before "spoor 1-4" and newer lifts last.) */
 export function sortLifts(lifts) {
-  return [...lifts].sort((a, b) => otherOperator(a) - otherOperator(b)
-    || LIFT_NAMES.compare(a.name, b.name) || LIFT_NAMES.compare(a.id, b.id));
+  const key = (l) => {
+    const track = liftTrack(l);
+    return { group: otherOperator(l) ? 2 : track == null ? 1 : 0, track: track ?? 0 };
+  };
+  return lifts.map((l) => [key(l), l]).sort(([ka, a], [kb, b]) => ka.group - kb.group || ka.track - kb.track
+    || LIFT_NAMES.compare(a.name, b.name) || LIFT_NAMES.compare(a.id, b.id)).map(([, l]) => l);
 }
 
 // --- lift status -----------------------------------------------------------------
