@@ -44,6 +44,11 @@ of 17–19 Nov showed:
 - **In between, it sends changes live**: mostly short blips (of the 58 outages that ended, 42
   were over within 30 minutes), but also repairs of outages we only knew from the full status
   (4 of them within a day).
+- **The live changes are complete**: the full status of 18 Nov plus all live changes up to
+  20 Nov gave exactly the full status of 20 Nov (441 lifts, 0 differences).
+- The start time in a full status is not when an outage began: it's the lift's latest report,
+  which moves on about every 24 hours without a live message. So the app shows when the status
+  was last updated, not since when a lift is out of service.
 - A heartbeat every 10 minutes; ASD-LIF-013 is repeated every 5 minutes. The statuses seen are
   `available`, `notAvailable` and `unknown` (never `partiallyAvailable`).
 
@@ -69,7 +74,7 @@ goes in a note under the lift. Rules in `js/lib.js` (`liftState`), chosen from t
 |---|---|
 | Out of service, "wordt … in gebruik genomen" | grey **Nog niet in gebruik**; not counted for the station |
 | Out of service with an expected end date | red **Buiten gebruik**, "verwacht tot …" |
-| Out of service according to a full status, no end date | red, "gemeld in de volledige update van 18 nov 04:02; sindsdien geen nieuws" |
+| Out of service according to a full status, no end date | red, "laatste update 20 nov 04:02" |
 | Live outage, less than 30 minutes old (no end date) | **Werkt**, "storing gemeld om …" |
 | Live outage of 30 minutes or more | red **Buiten gebruik** |
 | 3+ outages in the last 24 hours, working now | **Werkt**, "had het afgelopen etmaal … korte storingen" |

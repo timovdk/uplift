@@ -148,14 +148,13 @@ function LiftRow(lift) {
   const st = liftState(lift, S.status);
   const lines = [];
   if (st.level === 'down') {
-    if (st.since) lines.push(`Sinds ${formatMoment(st.since)}`);
+    // How up to date this is, not how long it's been broken: the start time in a full status
+    // is only the lift's latest daily report (it moves on every day), not when the outage began.
+    if (st.updated) lines.push(`Laatste update ${formatMoment(st.updated)}`);
     if (st.until) {
       lines.push(st.overdue
         ? `Zou tot ${formatMoment(st.until)} duren, maar is nog niet als hersteld gemeld`
         : `Verwacht tot ${formatMoment(st.until)}`);
-    }
-    if (st.snapshot && !st.until) {
-      lines.push(`Gemeld in de volledige update van ${formatMoment(st.updated)}; sindsdien geen nieuws over deze lift.`);
     }
   } else if (st.level === 'notyet') {
     lines.push(st.desc);
