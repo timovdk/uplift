@@ -6,7 +6,7 @@ Runs in a small Docker container on a home server (see nas/README.md). It:
   and reconnects when it goes dead (see listen_lifts.py);
 - saves every message in DATA_DIR/raw/YYYY-MM-DD/ (UTC date), for later analysis;
 - applies each message to the running status (same code as build_lifts.py): a full status
-  (all lifts in one message; seen 18 Nov 03:02 UTC, but not daily) is the new baseline, live
+  (all lifts in one message, nightly at about 03:02 UTC) is the new baseline, live
   changes build on it. At start-up it replays the archive from the latest full status, so a
   restart or an update starts from the same baseline;
 - uploads lifts.json to a public Cloudflare R2 bucket: at most every PUBLISH_EVERY_MIN minutes

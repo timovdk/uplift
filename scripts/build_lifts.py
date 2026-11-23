@@ -2,9 +2,10 @@
 """Build data/lifts.json: the latest known status of every lift, from SIRI-FM messages.
 
 How the feed works (BISON TMI9 Dutch SIRI-FM profile, and what we saw in Nov 2026): DOVA sends
-some status changes live, mostly short blips, and now and then (seen 18 Nov 03:02 UTC, not the
-night after) the status of *all* lifts in one message. That full status is the new baseline
-(apply_snapshot); live changes build on it (apply). In between, a lift keeps its last known
+every status change live (mostly short blips), and every night at about 03:02 UTC the status of
+*all* lifts in one message. That full status is the new baseline (apply_snapshot); live changes
+build on it (apply). (17–23 Nov: each full status was exactly the previous one plus the live
+changes in between.) In between, a lift keeps its last known
 status. Each lift keeps its changes of the last 24 hours, for the display rules in js/lib.js.
 
 Feed ids ("NL:CHB:LiftEquipment:8400058_013") are mapped to lift codes ("ASD-LIF-013") via
@@ -134,7 +135,7 @@ def lift_id(ref, known):
 
 
 # A message with at least this many lifts is DOVA's full status ("snapshot", all ~440 lifts;
-# seen 18 Nov 03:02 UTC, not daily). Ordinary messages carry one or a few lifts.
+# nightly at about 03:02 UTC). Ordinary messages carry one or a few lifts.
 SNAPSHOT_MIN = 100
 # How long each lift's changes are kept (for "a few short outages today", see lib.js).
 HISTORY_H = 24

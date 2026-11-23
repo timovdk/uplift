@@ -73,8 +73,8 @@ Update: `git -C src pull && docker compose up -d --build`.
   as a backup, the service reconnects after 12 minutes without any message.
 - The container is *unhealthy* when no message came in for 15 minutes.
 - After a fresh start (empty archive) most lifts are "unknown" until the next full status.
-  That comes now and then, not daily (18 Nov 03:02 UTC yes, 19 Nov no). After a restart the
-  archive is replayed from the latest full status, however old.
+  That comes every night at about 03:02 UTC (one got lost on the way, 19 Nov). After a restart
+  the archive is replayed from the latest full status, however old.
 - Without the `R2_*` settings it still listens and archives, but publishes nothing.
 - A station list that fails the check (too few stations or lifts, not linked to the feed,
   outside the Netherlands) is not used; the log says why, and it tries again after 6 hours.

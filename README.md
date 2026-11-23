@@ -10,9 +10,9 @@ Everything you save stays on your phone. A cat keeps you company.
 
 > Uplift is an independent tool. It is not made by or on behalf of NS or ProRail.
 
-**Status:** the live feed works (tested Nov 2026). The feed service that publishes it (`nas/`)
-isn't running yet; until it is, the app runs on a made-up example status and says so in a banner
-on every screen. See "Going live" below.
+**Status:** live since 17 Nov 2026 at [timovdk.nl/uplift](https://timovdk.nl/uplift/). The
+feed service (`nas/`) publishes the status; without it, the app falls back to a made-up example
+status and says so in a banner on every screen. See "Going live" below.
 
 ## How reliable is it?
 
@@ -36,16 +36,17 @@ charges €1000 a year and pushes to your own server with a fixed IP. Not needed
 ### How the status stays complete
 
 What we saw on the stream (Nov 2026, BISON TMI9 Dutch SIRI-FM profile), and what the NAS data
-of 17–19 Nov showed:
+of 17–23 Nov showed:
 
-- **Now and then, DOVA sends the status of all lifts** (~440) in one message: on 18 Nov at
-  03:02 UTC, but not the night after (asked GOVI why). It's the only complete picture: 53 of the
-  61 outages in it had never come by as a change.
-- **In between, it sends changes live**: mostly short blips (of the 58 outages that ended, 42
-  were over within 30 minutes), but also repairs of outages we only knew from the full status
-  (4 of them within a day).
-- **The live changes are complete**: the full status of 18 Nov plus all live changes up to
-  20 Nov gave exactly the full status of 20 Nov (441 lifts, 0 differences).
+- **Every night at about 03:02 UTC, DOVA sends the status of all lifts** (~440) in one message.
+  One night (19 Nov) it didn't reach us, though GOVI's own subscriber got it: lost somewhere
+  between their server and ours. It's what you need when you start listening: most outages in
+  it are long ones that started before.
+- **In between, it sends every change live**: mostly short blips (of 376 outages in a week, 239
+  were over within 30 minutes), but also longer outages and repairs.
+- **The live changes are complete**: every full status (18, 20, 21, 22 and 23 Nov) was exactly
+  the previous one plus the live changes in between (441 lifts, 0 differences). So missing a
+  full status costs little.
 - The start time in a full status is not when an outage began: it's the lift's latest report,
   which moves on about every 24 hours without a live message. So the app shows when the status
   was last updated, not since when a lift is out of service.
@@ -56,7 +57,7 @@ So the feed service (`nas/`, a small Docker container on a home server) keeps on
 open and treats **a full status as the new baseline**: every lift gets its status from it,
 lifts that aren't in it lose theirs. Live changes then build on it until the next one
 (`scripts/build_lifts.py`). In between, **a lift keeps its last known status**: changes come
-live, so silence mostly means nothing changed. It keeps each lift's changes of the last 24 hours, archives every
+live, so silence means nothing changed. It keeps each lift's changes of the last 24 hours, archives every
 raw message, and uploads `lifts.json` to a public Cloudflare R2 bucket on our own domain: at
 most every minute when something changed, at least every 10 minutes. At start-up it replays the
 archive from the latest full status, so a restart or an update starts from the same baseline.
