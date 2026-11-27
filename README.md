@@ -44,9 +44,14 @@ of 17–23 Nov showed:
   it are long ones that started before.
 - **In between, it sends every change live**: mostly short blips (of 376 outages in a week, 239
   were over within 30 minutes), but also longer outages and repairs.
-- **The live changes are complete**: every full status (18, 20, 21, 22 and 23 Nov) was exactly
-  the previous one plus the live changes in between (441 lifts, 0 differences). So missing a
-  full status costs little.
+- **The live changes are complete**: on 6 of the 8 nights (18–27 Nov), the full status was
+  exactly the previous one plus the live changes in between (441 lifts, 0 differences). So
+  missing a full status costs little.
+- **Late messages are less reliable.** Almost all changes arrive within 10 minutes of their
+  start time, and the next full status confirms them. 24 of 1446 came in an hour or more late,
+  for example a batch of repairs of long-broken lifts on 25 Nov around 16:00. The next full
+  status contradicted 5 of those, the only differences we saw. The app still follows them
+  (the batch was right for 9 of its 13 lifts), and the nightly full status corrects the rest.
 - The start time in a full status is not when an outage began: it's the lift's latest report,
   which moves on about every 24 hours without a live message. So the app shows when the status
   was last updated, not since when a lift is out of service.
